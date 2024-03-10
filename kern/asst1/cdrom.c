@@ -9,6 +9,7 @@
 typedef struct {
     int block_num;
     int next;
+    int set;
     unsigned int value;
     struct semaphore *cdrom_sem;
 } StaticLinkListNode;
@@ -18,7 +19,7 @@ typedef struct {
     StaticLinkListNode *node;
 } StaticLinkListRepr,*StaticLinkList;
 
-struct lock *cdrom_lock;
+struct lock *cdrom_lock_1, *cdrom_lock_2;
 struct cv *cdrom_full, *cdrom_empty;
 int count = 0;
 StaticLinkList staticlist;
@@ -37,17 +38,20 @@ StaticLinkList list_init(int size) {
     list->reserveListHead = 1;
     list->node = (StaticLinkListNode*) kmalloc((size + 1)*sizeof(StaticLinkListNode));
     list->node[list->head].block_num = -1;
+    list->node[list->head].set = -1;
     list->node[list->head].next = -1;
     list->node[list->head].value = (unsigned int) -1;
     list->node[list->head].cdrom_sem = sem_create("",0);
     for(int i = 1; i < list->length-1; ++i){
         list->node[i].next = i+1;
         list->node[i].block_num = -1;
+        list->node[i].set = -1;
         list->node[i].value = (unsigned int) -1;
         list->node[i].cdrom_sem = sem_create("",0);
     }
     list->node[list->length-1].next = -1;
     list->node[list->length-1].block_num = -1;
+    list->node[list->length-1].set = -1;
     list->node[list->length-1].value = (unsigned int) -1;
     list->node[list->length-1].cdrom_sem = sem_create("",0);
     return list;
@@ -79,6 +83,9 @@ StaticLinkListNode *list_get(StaticLinkList list, int block_num) {
     int curNode = list->head;
     for(;list->node[curNode].next != -1;curNode = list->node[curNode].next){
         if(list->node[list->node[curNode].next].block_num == block_num){
+            if(list->node[list->node[curNode].next].set == 1){
+                continue;
+            }
             return &list->node[list->node[curNode].next];
         }
     }
@@ -121,24 +128,24 @@ unsigned int cdrom_read(int block_num)
 {
         kprintf("Received request read block %d\n",block_num);
         StaticLinkListNode *curReq;
-        lock_acquire(cdrom_lock);
+        lock_acquire(cdrom_lock_1);
         while (count == MAX_CONCURRENT_REQ){
-            cv_wait(cdrom_full,cdrom_lock);
+            cv_wait(cdrom_full,cdrom_lock_1);
         }
         ++count;
         curReq = list_append(staticlist,block_num);
         cdrom_block_request(block_num);
-        cv_signal(cdrom_empty,cdrom_lock);
-        lock_release(cdrom_lock);
+        cv_signal(cdrom_empty,cdrom_lock_1);
+        lock_release(cdrom_lock_1);
         
         P(curReq->cdrom_sem);
 
+        lock_acquire(cdrom_lock_2);
         list_pop(staticlist,curReq);
-        if(curReq->value == (unsigned int)-1){
-            kprintf("%d", curReq->value);
-        }//debug
         unsigned int result = curReq->value;
         curReq->block_num = -1;
+        curReq->set = -1;
+        lock_release(cdrom_lock_2);
         return result;
 }
 
@@ -156,21 +163,23 @@ unsigned int cdrom_read(int block_num)
 
 void cdrom_handler(int block_num, unsigned int value)
 {
-    lock_acquire(cdrom_lock);
+    lock_acquire(cdrom_lock_1);
     while (count == 0){
-        cv_wait(cdrom_empty,cdrom_lock);
+        cv_wait(cdrom_empty,cdrom_lock_1);
     }
     --count;
-    cv_signal(cdrom_full,cdrom_lock);
-    lock_release(cdrom_lock);
+    cv_signal(cdrom_full,cdrom_lock_1);
+    lock_release(cdrom_lock_1);
+
+    lock_acquire(cdrom_lock_2);
     StaticLinkListNode *node  = list_get(staticlist,block_num);
-    // while(node){
-    //     node->value = value;
-    //     V(node->cdrom_sem);
-    //     node = list_get(staticlist,block_num);
-    // }
-    node->value = value;
-    V(node->cdrom_sem);
+    while(node){
+        node->value = value;
+        node->set = 1;
+        V(node->cdrom_sem);
+        node = list_get(staticlist,block_num);
+    }
+    lock_release(cdrom_lock_2);
 }
 
 /*
@@ -181,7 +190,8 @@ void cdrom_handler(int block_num, unsigned int value)
 
 void cdrom_startup(void)
 {
-    cdrom_lock = lock_create("cdrom_lock");
+    cdrom_lock_1 = lock_create("cdrom_lock_1");
+    cdrom_lock_2 = lock_create("cdrom_lock_2");
     cdrom_full = cv_create("cdrom_full");
     cdrom_empty = cv_create("cdrom_empty");
     staticlist = list_init(MAX_CONCURRENT_REQ);
@@ -194,7 +204,8 @@ void cdrom_startup(void)
 */
 void cdrom_shutdown(void)
 {
-    lock_destroy(cdrom_lock);
+    lock_destroy(cdrom_lock_1);
+    lock_destroy(cdrom_lock_2);
     cv_destroy(cdrom_full);
     cv_destroy(cdrom_empty);
     list_destroy(staticlist);
