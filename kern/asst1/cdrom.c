@@ -90,6 +90,9 @@ StaticLinkListNode *list_pop(StaticLinkList list, int block_num) {
     for(;list->node[curNode].next != -1;curNode = list->node[curNode].next){
         if(list->node[list->node[curNode].next].block_num == block_num){
             int target = list->node[curNode].next;
+            if(target == list->tail){
+                list->tail = curNode;
+            }
             list->node[curNode].next = list->node[target].next;
             list->node[target].next = list->reserveListHead;
             list->reserveListHead = target;
@@ -116,11 +119,28 @@ StaticLinkListNode *list_pop(StaticLinkList list, int block_num) {
 
 unsigned int cdrom_read(int block_num)
 {
-        kprintf("Received request read block %d\n",block_num);
-        
+        //kprintf("Received request read block %d\n",block_num);
+        StaticLinkListNode *curReq;
+        lock_acquire(cdrom_lock);
+        while (count == MAX_CONCURRENT_REQ){
+            cv_wait(cdrom_cv,cdrom_lock);
+        }
+        ++count;
+        curReq = list_append(staticlist,block_num);
         cdrom_block_request(block_num);
+        lock_release(cdrom_lock);
+        
+        P(curReq->cdrom_sem);
 
-        return block_num;
+        lock_acquire(cdrom_lock);
+        while (count == 0){
+            cv_signal(cdrom_cv,cdrom_lock);
+        }
+        curReq = list_pop(staticlist,block_num);
+        unsigned int result = curReq->value;
+        --count;
+        lock_release(cdrom_lock);
+        return result;
 }
 
 /*
@@ -137,8 +157,9 @@ unsigned int cdrom_read(int block_num)
 
 void cdrom_handler(int block_num, unsigned int value)
 {
-    (void) block_num;
-    (void) value;
+    StaticLinkListNode *node = list_get(staticlist,block_num);
+    node->value = value;
+    V(node->cdrom_sem);
 }
 
 /*
@@ -151,7 +172,7 @@ void cdrom_startup(void)
 {
     cdrom_lock = lock_create("cdrom_lock");
     cdrom_cv = cv_create("cdrom_cv");
-    staticlist = list_init()
+    staticlist = list_init(MAX_CONCURRENT_REQ);
 }   
 
 /*
@@ -163,6 +184,7 @@ void cdrom_shutdown(void)
 {
     lock_destroy(cdrom_lock);
     cv_destroy(cdrom_cv);
+    list_destroy(staticlist);
 }
 
 
