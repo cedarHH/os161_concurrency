@@ -14,6 +14,7 @@
  * ********************************************************************
  */
 
+struct lock *count_lock;
 
 /*
  * counter_initialise() allocates a synchronised counter and initialises
@@ -41,7 +42,8 @@ struct sync_counter * counter_initialise(int val)
          * INSERT ANY INITIALISATION CODE YOU MAY REQUIRE HERE
          * ********************************************************************
          */
-        
+        count_lock = lock_create("count");
+
         return sc_ptr;
 }
 
@@ -57,6 +59,7 @@ int counter_read_and_destroy(struct sync_counter *sc_ptr)
 {
         int count;
 
+        lock_acquire(count_lock);
         count = sc_ptr->counter;
         
         /*
@@ -65,6 +68,8 @@ int counter_read_and_destroy(struct sync_counter *sc_ptr)
          * **********************************************************************
          */
         kfree(sc_ptr);
+        lock_release(count_lock);
+        lock_destroy(count_lock);
         return count;
 }
 
@@ -75,7 +80,10 @@ int counter_read_and_destroy(struct sync_counter *sc_ptr)
 
 void counter_increment(struct sync_counter *sc_ptr)
 {
+        
+        lock_acquire(count_lock);
         sc_ptr->counter = sc_ptr->counter + 1;
+        lock_release(count_lock);
 }
 
 /*
@@ -85,6 +93,8 @@ void counter_increment(struct sync_counter *sc_ptr)
 
 void counter_decrement(struct sync_counter *sc_ptr)
 {
+        lock_acquire(count_lock);
         sc_ptr->counter = sc_ptr->counter - 1;
+        lock_release(count_lock);
 }
 

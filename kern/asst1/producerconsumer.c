@@ -18,6 +18,8 @@
 */
 
 
+struct semaphore *mutex, *full, *empty;
+
 data_item_t * item_buffer[BUFFER_SIZE];
 
 volatile int write_head, read_tail;
@@ -27,13 +29,13 @@ volatile int write_head, read_tail;
 /* The following functions test if the buffer is full or empty. They
    are obviously not synchronised in any way */
 
-static bool is_full() {
-        return (write_head + 1) % BUFFER_SIZE == read_tail;
-}
+// static bool is_full() {
+//         return (write_head + 1) % BUFFER_SIZE == read_tail;
+// }
 
-static bool is_empty() {
-        return write_head == read_tail;
-}
+// static bool is_empty() {
+//         return write_head == read_tail;
+// }
 
 /* consumer_receive() is called by a consumer to request more data. It
    should block on a sync primitive if no data is available in your
@@ -46,12 +48,16 @@ data_item_t * consumer_receive(void)
         data_item_t * item;
 
 
-        while(is_empty()) {
-                /* busy wait */
-        }
+        // while(is_empty()) {
+        //         /* busy wait */
+        // }
         
+        P(full);
+        P(mutex);
         item = item_buffer[read_tail];
         read_tail = (read_tail + 1) % BUFFER_SIZE;
+        V(mutex);
+        V(empty);
 
         return item;
 }
@@ -64,11 +70,16 @@ data_item_t * consumer_receive(void)
 
 void producer_send(data_item_t *item)
 {
-        while(is_full()) {
-                /* busy wait */
-        }
+        // while(is_full()) {
+        //         /* busy wait */
+        // }
+        P(empty);
+        P(mutex);
         item_buffer[write_head] = item;
         write_head = (write_head + 1) % BUFFER_SIZE;
+        V(mutex);
+        V(full);
+
 }
 
 /* Perform any initialisation (e.g. of global data or synchronisation
@@ -78,12 +89,17 @@ void producer_send(data_item_t *item)
 
 void producerconsumer_startup(void)
 {
+        mutex = sem_create("mutex", 1);
+        full = sem_create("full", 0);
+        empty = sem_create("empty", BUFFER_ITEMS);
         write_head = read_tail = 0;
 }
 
 /* Perform your clean-up here */
 void producerconsumer_shutdown(void)
 {
-        
+        sem_destroy(mutex);
+        sem_destroy(full);
+        sem_destroy(empty);
 }
 
