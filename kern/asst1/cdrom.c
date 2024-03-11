@@ -173,12 +173,15 @@ void cdrom_handler(int block_num, unsigned int value)
 
     lock_acquire(cdrom_lock_2);
     StaticLinkListNode *node  = list_get(staticlist,block_num);
-    while(node){
-        node->value = value;
-        node->set = 1;
-        V(node->cdrom_sem);
-        node = list_get(staticlist,block_num);
-    }
+    node->value = value;
+    node->set = 1;
+    V(node->cdrom_sem);
+    // while(node){
+    //     node->value = value;
+    //     node->set = 1;
+    //     V(node->cdrom_sem);
+    //     node = list_get(staticlist,block_num);
+    // }
     lock_release(cdrom_lock_2);
 }
 
