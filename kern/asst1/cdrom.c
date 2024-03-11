@@ -126,7 +126,7 @@ StaticLinkListNode *list_pop(StaticLinkList list, StaticLinkListNode *node) {
 
 unsigned int cdrom_read(int block_num)
 {
-        kprintf("Received request read block %d\n",block_num);
+        //kprintf("Received request read block %d\n",block_num);
         StaticLinkListNode *curReq;
         lock_acquire(cdrom_lock_1);
         while (count == MAX_CONCURRENT_REQ){
@@ -173,9 +173,11 @@ void cdrom_handler(int block_num, unsigned int value)
 
     lock_acquire(cdrom_lock_2);
     StaticLinkListNode *node  = list_get(staticlist,block_num);
-    node->value = value;
-    node->set = 1;
-    V(node->cdrom_sem);
+    if(node){
+        node->value = value;
+        node->set = 1;
+        V(node->cdrom_sem);
+    }
     // while(node){
     //     node->value = value;
     //     node->set = 1;
@@ -197,7 +199,7 @@ void cdrom_startup(void)
     cdrom_lock_2 = lock_create("cdrom_lock_2");
     cdrom_full = cv_create("cdrom_full");
     cdrom_empty = cv_create("cdrom_empty");
-    staticlist = list_init(MAX_CONCURRENT_REQ);
+    staticlist = list_init(MAX_CONCURRENT_REQ*MAX_CLIENTS);
 }   
 
 /*
