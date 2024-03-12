@@ -141,10 +141,10 @@ unsigned int cdrom_read(int block_num)
         P(curReq->cdrom_sem);
 
         lock_acquire(cdrom_lock_2);
-        list_pop(staticlist,curReq);
         unsigned int result = curReq->value;
         curReq->block_num = -1;
         curReq->set = -1;
+        list_pop(staticlist,curReq);
         lock_release(cdrom_lock_2);
         return result;
 }

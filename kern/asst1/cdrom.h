@@ -12,8 +12,8 @@
 
 /* Some constants that determine the size of the system created. */
 
-#define MAX_CONCURRENT_REQ 3
-#define MAX_CLIENTS 3
+#define MAX_CONCURRENT_REQ 10
+#define MAX_CLIENTS 100
 
 /* The two main cdrom functions you must implement */
 extern unsigned int cdrom_read(int block_num);

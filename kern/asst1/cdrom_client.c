@@ -29,11 +29,11 @@ cdrom_client_thread(void *unused_ptr, unsigned long client_num)
         /* We read 10 blocks from the cdrom numbered from 1 to 10 to fetch the value stored 
         at that block */
 
-        for (i = 0; i < 5; i++) {
+        for (i = 0; i < 1000; i++) {
                 
                 v = cdrom_read(i);
-
-                kprintf("Thread %ld requested block %d an received value %d\n",client_num, i, v);
+                (void) client_num;
+                //kprintf("Thread %ld requested block %d an received value %d\n",client_num, i, v);
 
                 /* We sanity the value to see if it is what we expect based on the block number requested*/
                 if (!BLOCK_VAL_CHECK(i,v)) {
