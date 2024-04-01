@@ -77,7 +77,7 @@ void producer_send(data_item_t *item)
         P(mutex);
         item_buffer[write_head] = item;
         write_head = (write_head + 1) % BUFFER_SIZE;
-        V(mutex);
+        V(*mutex);
         V(full);
 
 }
